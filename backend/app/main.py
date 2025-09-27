@@ -6,7 +6,7 @@ from app.config import Settings, get_settings
 from app.db import get_session, init_db
 from app.instrumentation import FutureAGIInstrumentation, provide_instrumentation
 from app.llm import LLMClient, LLMError
-from app.schemas import ProcessRequest, ToDoListEvent, TranscriptResponse
+from app.schemas import ProcessRequest, ToDoList, ToDoListEvent, TranscriptResponse
 from app.todo_service import ToDoService
 
 app = FastAPI(title="ToDo LLM Service", version="0.1.0")
