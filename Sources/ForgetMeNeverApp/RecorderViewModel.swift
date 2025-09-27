@@ -10,19 +10,45 @@ final class RecorderViewModel: ObservableObject {
         case failed
     }
 
+    struct TodoDisplayItem: Identifiable, Equatable {
+        let id: String
+        let text: String
+        let dueDisplay: String?
+        let isHighlighted: Bool
+    }
+
     @Published var phase: Phase = .idle
     @Published var recognizedText: String = ""
     @Published var errorMessage: String?
     @Published var statusMessage: String = ""
+    @Published var todoItems: [TodoDisplayItem] = []
 
     private let audioRecorder: AudioRecorder
-    private let apiClient: TranscriptionAPIClient
+    private let backendClient: BackendAPIClient
     private var activeRecordingURL: URL?
     private var task: Task<Void, Never>?
 
-    init(audioRecorder: AudioRecorder, apiClient: TranscriptionAPIClient) {
+    private static let backendDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
+    private static let displayDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
+    init(audioRecorder: AudioRecorder, backendClient: BackendAPIClient) {
         self.audioRecorder = audioRecorder
-        self.apiClient = apiClient
+        self.backendClient = backendClient
+    }
+
+    func bootstrap() {
+        refreshTodoList(highlightedKeys: [])
     }
 
     func startSession() {
@@ -31,6 +57,7 @@ final class RecorderViewModel: ObservableObject {
         errorMessage = nil
         statusMessage = "Ready"
         phase = .idle
+        refreshTodoList(highlightedKeys: [])
 
         task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -67,16 +94,20 @@ final class RecorderViewModel: ObservableObject {
                 self.activeRecordingURL = nil
             }
             do {
-                let transcription = try await self.apiClient.transcribe(audioFileURL: recordingURL)
+                let transcription = try await self.backendClient.transcribe(audioFileURL: recordingURL)
                 self.recognizedText = transcription
-                self.statusMessage = "Completed"
+                self.statusMessage = "Updating to-do list…"
+
+                let event = try await self.backendClient.process(prompt: transcription)
+                self.applyTodoListEvent(event)
+                self.statusMessage = self.statusMessage(for: event.type)
                 self.phase = .finished
                 print("[ForgetMeNever] Transcription received (\(transcription.count) chars)")
             } catch {
                 self.errorMessage = self.describe(error)
-                self.statusMessage = "Recognition failed"
+                self.statusMessage = "Operation failed"
                 self.phase = .failed
-                print("[ForgetMeNever] Transcription failed: \(error.localizedDescription)")
+                print("[ForgetMeNever] Processing pipeline failed: \(error.localizedDescription)")
             }
         }
     }
@@ -101,6 +132,59 @@ final class RecorderViewModel: ObservableObject {
         phase == .processing
     }
 
+    // MARK: - Private helpers
+
+    private func refreshTodoList(highlightedKeys: Set<String>) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let items = try await self.backendClient.fetchTodoList()
+                self.applyTodoItems(items, highlightedKeys: highlightedKeys)
+            } catch {
+                print("[ForgetMeNever] Failed to fetch to-do list: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func applyTodoListEvent(_ event: BackendAPIClient.TodoListEventResponse) {
+        let highlighted = Set((event.updated ?? []).map(key(for:)))
+        applyTodoItems(event.newList.items, highlightedKeys: highlighted)
+        refreshTodoList(highlightedKeys: highlighted)
+    }
+
+    private func applyTodoItems(_ items: [BackendAPIClient.TodoItemDTO], highlightedKeys: Set<String>) {
+        todoItems = items.map { item in
+            let key = key(for: item)
+            let dueDisplay = formattedDue(item.due)
+            return TodoDisplayItem(id: key, text: item.text, dueDisplay: dueDisplay, isHighlighted: highlightedKeys.contains(key))
+        }
+    }
+
+    private func formattedDue(_ due: String?) -> String? {
+        guard let due, !due.isEmpty else { return nil }
+        if let date = Self.backendDateFormatter.date(from: due) {
+            return "Due: \(Self.displayDateFormatter.string(from: date))"
+        }
+        return "Due: \(due)"
+    }
+
+    private func key(for item: BackendAPIClient.TodoItemDTO) -> String {
+        "\(item.text.lowercased())|\(item.due?.lowercased() ?? "<none>")"
+    }
+
+    private func statusMessage(for eventType: String) -> String {
+        switch eventType {
+        case "updated":
+            return "To-do list updated"
+        case "removed":
+            return "Items removed"
+        case "retrieved":
+            return "Current to-do list"
+        default:
+            return "Done"
+        }
+    }
+
     private func describe(_ error: Error) -> String {
         if let recorderError = error as? AudioRecorder.RecorderError {
             switch recorderError {
@@ -108,16 +192,14 @@ final class RecorderViewModel: ObservableObject {
                 return "Microphone permission is required."
             case .failedToStart:
                 return "Unable to start recording. Please check your input device."
-            case let .underlying(underlyingError):
-                return "Recorder error: \(underlyingError.localizedDescription)"
             }
         }
-        if let apiError = error as? TranscriptionAPIClient.TranscriptionError {
+        if let apiError = error as? BackendAPIClient.APIError {
             switch apiError {
             case .invalidResponse:
-                return "Invalid response from transcription service."
+                return "Invalid response from backend service."
             case let .server(status, body):
-                return "Server error (\(status)): \(body)"
+                return "Backend error (\(status)): \(body)"
             }
         }
         if (error as NSError).code == NSUserCancelledError {

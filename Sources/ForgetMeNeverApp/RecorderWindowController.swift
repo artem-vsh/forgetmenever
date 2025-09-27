@@ -52,7 +52,7 @@ final class RecorderWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private static var defaultFrame: NSRect {
-        NSRect(x: 0, y: 0, width: 420, height: 320)
+        NSRect(x: 0, y: 0, width: 780, height: 420)
     }
 }
 

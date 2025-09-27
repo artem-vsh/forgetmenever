@@ -3,11 +3,12 @@ import Foundation
 
 @MainActor
 final class AudioRecorder {
-    private var recorder: AVAudioRecorder?
+    private var engine: AVAudioEngine?
+    private var audioFile: AVAudioFile?
     private var recordingURL: URL?
 
     var isRecording: Bool {
-        recorder?.isRecording ?? false
+        engine?.isRunning ?? false
     }
 
     func startRecording() async throws -> URL {
@@ -16,41 +17,84 @@ final class AudioRecorder {
             throw RecorderError.permissionDenied
         }
 
+        stopCurrentEngineIfNeeded()
+
+        let engine = AVAudioEngine()
+        self.engine = engine
+
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        enableVoiceIsolationIfAvailable(on: inputNode)
+
         let url = makeRecordingURL()
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 44_100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
-        do {
-            let recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder.prepareToRecord()
-            guard recorder.record() else {
-                throw RecorderError.failedToStart
+        recordingURL = url
+        audioFile = try AVAudioFile(forWriting: url, settings: format.settings)
+
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+            do {
+                try self.audioFile?.write(from: buffer)
+            } catch {
+                print("[ForgetMeNever] Audio write error: \(error.localizedDescription)")
             }
-            self.recorder = recorder
-            self.recordingURL = url
-            return url
-        } catch {
-            throw RecorderError.underlying(error)
         }
+
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            self.engine = nil
+            throw RecorderError.failedToStart
+        }
+
+        return url
     }
 
     func stopRecording() -> URL? {
-        guard let recorder else {
-            return recordingURL
+        guard let engine else {
+            let url = recordingURL
+            recordingURL = nil
+            audioFile = nil
+            return url
         }
-        recorder.stop()
+
+        if engine.isRunning {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+
         let url = recordingURL
         recordingURL = nil
-        self.recorder = nil
+        audioFile = nil
+        self.engine = nil
         return url
     }
 
     func cancelRecording() {
         if let url = stopRecording() {
             try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private func stopCurrentEngineIfNeeded() {
+        if let engine, engine.isRunning {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        engine = nil
+        audioFile = nil
+        recordingURL = nil
+    }
+
+    private func enableVoiceIsolationIfAvailable(on inputNode: AVAudioInputNode) {
+        guard inputNode.responds(to: #selector(AVAudioInputNode.setVoiceProcessingEnabled(_:))) else { return }
+        do {
+            try inputNode.setVoiceProcessingEnabled(true)
+            print("[ForgetMeNever] Voice isolation enabled")
+        } catch {
+            print("[ForgetMeNever] Voice isolation unavailable: \(error.localizedDescription)")
         }
     }
 
@@ -76,6 +120,5 @@ final class AudioRecorder {
     enum RecorderError: Error {
         case permissionDenied
         case failedToStart
-        case underlying(Error)
     }
 }

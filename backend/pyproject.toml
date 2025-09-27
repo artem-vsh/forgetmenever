@@ -18,6 +18,9 @@ dependencies = [
 development = [
     "pytest>=8.0.0",
 ]
+futureagi = [
+    "futureagi>=0.6.7",
+]
 
 [build-system]
 requires = ["setuptools", "wheel"]

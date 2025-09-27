@@ -30,8 +30,8 @@ final class ForgetMeNeverApplication: NSObject, NSApplicationDelegate {
             let config = try AppConfig.load()
             self.config = config
             let audioRecorder = AudioRecorder()
-            let apiClient = TranscriptionAPIClient(config: config)
-            let viewModel = RecorderViewModel(audioRecorder: audioRecorder, apiClient: apiClient)
+            let backendClient = BackendAPIClient(config: config)
+            let viewModel = RecorderViewModel(audioRecorder: audioRecorder, backendClient: backendClient)
             self.viewModel = viewModel
 
             windowController = RecorderWindowController(
@@ -44,6 +44,7 @@ final class ForgetMeNeverApplication: NSObject, NSApplicationDelegate {
             try registerHotKey(using: config)
             configureStatusItem(hotKeyDescription: config.hotkey.displayName)
             print("[ForgetMeNever] Backend endpoint: \(config.transcriptEndpoint.absoluteString)")
+            viewModel.bootstrap()
             print("[ForgetMeNever] Ready. Menu bar icon added. Shortcut: \(config.hotkey.displayName)")
         } catch {
             print("[ForgetMeNever] Failed to launch: \(error.localizedDescription)")

@@ -41,6 +41,46 @@ class Settings(BaseSettings):
         alias="OUTPUT_DEBUG",
         description="Emit verbose logging, including sensitive values when true",
     )
+    futureagi_api_key: str | None = Field(
+        default=None,
+        alias="FUTUREAGI_API_KEY",
+        description="FutureAGI API key (optional)",
+    )
+    futureagi_secret_key: str | None = Field(
+        default=None,
+        alias="FUTUREAGI_SECRET_KEY",
+        description="FutureAGI secret key (optional)",
+    )
+    futureagi_base_url: str | None = Field(
+        default=None,
+        alias="FUTUREAGI_BASE_URL",
+        description="Override for FutureAGI API base URL",
+    )
+    futureagi_model_id: str | None = Field(
+        default=None,
+        alias="FUTUREAGI_MODEL_ID",
+        description="Identifier used when logging events to FutureAGI",
+    )
+    futureagi_model_type: str = Field(
+        default="GenerativeLLM",
+        alias="FUTUREAGI_MODEL_TYPE",
+        description="Model type reported to FutureAGI",
+    )
+    futureagi_environment: str = Field(
+        default="PRODUCTION",
+        alias="FUTUREAGI_ENVIRONMENT",
+        description="Deployment environment reported to FutureAGI",
+    )
+    futureagi_model_version: str | None = Field(
+        default=None,
+        alias="FUTUREAGI_MODEL_VERSION",
+        description="Model version reported to FutureAGI",
+    )
+    futureagi_tags: str | None = Field(
+        default=None,
+        alias="FUTUREAGI_TAGS",
+        description="JSON object of extra tags to attach to FutureAGI logs",
+    )
 
     database_url: str = Field(
         default="sqlite:///./todo.db", alias="DATABASE_URL", description="SQLAlchemy database URL"

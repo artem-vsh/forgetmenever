@@ -137,13 +137,30 @@ struct AppConfig: Decodable {
         environmentBackendURLOverride ?? backendURL
     }
 
+    private var backendBaseEndpoint: URL {
+        let base = effectiveBackendURL
+        let lowered = base.path.lowercased()
+        if lowered.hasSuffix("/transcript") || lowered.hasSuffix("/transcriptions") {
+            return base.deletingLastPathComponent()
+        }
+        return base
+    }
+
     var transcriptEndpoint: URL {
         let base = effectiveBackendURL
         let normalizedPath = base.path.lowercased()
-        if normalizedPath.hasSuffix("/transcript") || normalizedPath.contains("/transcriptions") {
+        if normalizedPath.hasSuffix("/transcript") || normalizedPath.hasSuffix("/transcriptions") {
             return base
         }
         return base.appendingPathComponent("transcript")
+    }
+
+    var processEndpoint: URL {
+        backendBaseEndpoint.appendingPathComponent("process")
+    }
+
+    var todoListEndpoint: URL {
+        backendBaseEndpoint.appendingPathComponent("todos")
     }
 }
 

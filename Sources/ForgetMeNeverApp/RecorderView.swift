@@ -7,6 +7,21 @@ struct RecorderView: View {
     let cancelAction: () -> Void
 
     var body: some View {
+        GeometryReader { geometry in
+            HStack(alignment: .top, spacing: 20) {
+                leftPane
+                    .frame(width: max(geometry.size.width * 0.33, 260))
+                Divider()
+                rightPane
+                    .frame(width: geometry.size.width * 0.67, alignment: .top)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(minWidth: 720, minHeight: 380)
+    }
+
+    private var leftPane: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
@@ -26,12 +41,13 @@ struct RecorderView: View {
                         Text(viewModel.recognizedText)
                             .font(.body)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.gray.opacity(0.08))
+                            )
                     }
-                    .frame(maxHeight: 150)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.gray.opacity(0.2))
-                    )
+                    .frame(maxHeight: 180)
                 }
             }
 
@@ -50,6 +66,8 @@ struct RecorderView: View {
                     .foregroundColor(.red)
             }
 
+            Spacer()
+
             HStack {
                 Spacer()
                 Button("Send", action: sendAction)
@@ -59,8 +77,48 @@ struct RecorderView: View {
                     .keyboardShortcut(.escape, modifiers: [])
             }
         }
-        .padding(24)
-        .frame(minWidth: 380, minHeight: 260)
+    }
+
+    private var rightPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("To-do list")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+
+            if viewModel.todoItems.isEmpty {
+                Text("No to-do items yet.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(viewModel.todoItems) { item in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.text)
+                                    .font(.body)
+                                if let due = item.dueDisplay {
+                                    Text(due)
+                                        .font(.footnote)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(item.isHighlighted ? Color.blue.opacity(0.18) : Color.gray.opacity(0.08))
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            Spacer()
+        }
     }
 
     private var title: String {
@@ -70,7 +128,7 @@ struct RecorderView: View {
         case .recording:
             return "Listening…"
         case .processing:
-            return "Sending to model…"
+            return "Processing…"
         case .finished:
             return "Transcription ready"
         case .failed:

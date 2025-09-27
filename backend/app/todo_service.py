@@ -8,6 +8,7 @@ from langgraph.graph import END, StateGraph
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.instrumentation import FutureAGIInstrumentation
 from app.llm import LLMClient
 from app.models import ToDoItemModel
 from app.schemas import (
@@ -30,9 +31,15 @@ class ToDoService:
 
     MAX_LLM_TURNS = 5
 
-    def __init__(self, session: Session, llm_client: LLMClient):
+    def __init__(
+        self,
+        session: Session,
+        llm_client: LLMClient,
+        instrumentation: Optional[FutureAGIInstrumentation] = None,
+    ):
         self.session = session
         self.llm_client = llm_client
+        self.instrumentation = instrumentation
 
     def list_items(self) -> List[ToDoItem]:
         items = self.session.execute(
@@ -129,25 +136,39 @@ class ToDoService:
         )
 
         graph = builder.compile()
-        graph.invoke(graph_state)
+        final_state = graph.invoke(graph_state)
+        messages = final_state.get("messages", graph_state["messages"])
 
-        current_list = ToDoList(items=self.list_items())
-
-        if last_payload and last_payload.get("action") == "retrieve":
-            return ToDoListEvent(
+        action = last_payload.get("action") if last_payload else "none"
+        if action == "retrieve":
+            event = ToDoListEvent(
                 type="retrieved",
-                new_list=current_list,
+                new_list=ToDoList(items=self.list_items()),
                 updated=None,
                 removed=None,
             )
+        elif action == "clear":
+            event = self.clear()
+        else:
+            current_list = ToDoList(items=self.list_items())
+            event = ToDoListEvent(
+                type=self._determine_event_type(all_updated, all_removed),
+                new_list=current_list,
+                updated=all_updated or None,
+                removed=all_removed or None,
+            )
 
-        event_type = self._determine_event_type(all_updated, all_removed)
-        return ToDoListEvent(
-            type=event_type,
-            new_list=current_list,
-            updated=all_updated or None,
-            removed=all_removed or None,
-        )
+        if self.instrumentation:
+            try:
+                self.instrumentation.log_interaction(
+                    prompt=payload.prompt,
+                    messages=messages,
+                    event=event,
+                )
+            except Exception:  # pragma: no cover - instrumentation should not impact workflow
+                pass
+
+        return event
 
     def clear(self) -> ToDoListEvent:
         removed_items = self._clear_items()
