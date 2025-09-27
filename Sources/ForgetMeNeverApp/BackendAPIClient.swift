@@ -82,13 +82,30 @@ final class BackendAPIClient {
             }
         }
 
+        let filename = fileURL.lastPathComponent
+        let mimeType = mimeType(for: fileURL.pathExtension)
         append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"file\"; filename=\"recording.m4a\"\r\n")
-        append("Content-Type: audio/m4a\r\n\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        append("Content-Type: \(mimeType)\r\n\r\n")
         body.append(try Data(contentsOf: fileURL))
         append("\r\n")
         append("--\(boundary)--\r\n")
         return body
+    }
+
+    private func mimeType(for ext: String) -> String {
+        switch ext.lowercased() {
+        case "m4a":
+            return "audio/m4a"
+        case "wav":
+            return "audio/wav"
+        case "caf":
+            return "audio/x-caf"
+        case "mp3":
+            return "audio/mpeg"
+        default:
+            return "application/octet-stream"
+        }
     }
 
     private func applyCommonHeaders(to request: inout URLRequest) {

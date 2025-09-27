@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List
 from datetime import datetime, timezone
 
 import httpx
+import mimetypes
 from openai import NotFoundError, OpenAI
 
 from app.config import Settings
@@ -164,7 +165,8 @@ class LLMClient:
             print(f"[LLM] SDK transcription failed for {model_name}: {exc!r}, falling back to HTTP")
         # Reset buffer for HTTP fallback
         buffer.seek(0)
-        files = {"file": (filename or "audio.m4a", buffer.read(), "audio/m4a")}
+        mime_type = mimetypes.guess_type(filename or "audio.wav")[0] or "audio/wav"
+        files = {"file": (filename or "audio.wav", buffer.read(), mime_type)}
         data = {"model": model_name}
         http_response = self._rest_client.post("/audio/transcriptions", files=files, data=data)
         http_response.raise_for_status()
