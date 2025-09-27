@@ -1,0 +1,13 @@
+{
+  "model_url": "https://api.sambanova.ai/v1/audio/transcriptions",
+  "model_voice_name": "Whisper-Large-v3",
+  "api_key": "",
+  "hotkey": {
+    "key_code": 17,
+    "modifier_flags": [
+      "command",
+      "option",
+      "control"
+    ]
+  }
+}
