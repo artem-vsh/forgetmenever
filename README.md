@@ -1,14 +1,14 @@
 # ForgetMeNever
 
-ForgetMeNever is a lightweight macOS menu bar app that captures quick voice notes. Trigger it from anywhere with a global shortcut, record immediately, and ship the audio to any OpenAI-compatible transcription endpoint. The recognized text is rendered in the app window for quick review or copy.
+ForgetMeNever is a lightweight macOS menu bar app that captures quick voice notes. Trigger it from anywhere with a global shortcut, record immediately, and ship the audio to the local FastAPI service in `backend/` (which can in turn talk to any OpenAI-compatible transcription endpoint). The recognized text is rendered in the app window for quick review or copy.
 
 ## Highlights
 - Status bar app with customizable global shortcut (default `⌘⌥⌃T`).
 - Automatically shows a floating window and begins recording as soon as it appears.
 - Captures compressed AAC (`.m4a`) audio suitable for Whisper-style APIs.
 - Stop via the on-screen **Send** button or the space bar; hide/cancel with **Esc** or by shifting focus.
-- Streams the captured audio file to a configurable model endpoint; displays the transcription result inside the window.
-- Configuration lives in `Sources/ForgetMeNeverApp/Resources/AppConfig.json` with support for `MODEL_URL` (`model_url`) and `MODEL_VOICE_NAME` (`model_voice_name`).
+- Streams the captured audio file to a local REST backend (default `POST /transcript`) and displays the transcription result inside the window.
+- Configuration lives in `Sources/ForgetMeNeverApp/Resources/AppConfig.json` and supports environment overrides.
 
 ## Getting Started
 Prerequisites:
@@ -19,6 +19,10 @@ Install dependencies (system frameworks only) and build:
 ```bash
 swift build
 ```
+Start the backend service (from `backend/`):
+```bash
+uvicorn app.main:app --reload --port 8000
+```
 Run the app from the command line:
 ```bash
 swift run ForgetMeNever
@@ -26,18 +30,11 @@ swift run ForgetMeNever
 You should see `[ForgetMeNever] Bootstrapping application…` followed by `[ForgetMeNever] Ready…` in stdout, confirming launch.
 The app lives in the menu bar; use the configured shortcut (default `⌘⌥⌃T`) to summon the recorder window.
 
-### API access
-Provide an API key via one of the following (first non-empty value wins):
-1. `api_key` field inside `AppConfig.json`.
-2. `FMN_API_KEY` environment variable.
-3. `OPENAI_API_KEY` environment variable.
-
-### Model configuration
-Edit `Sources/ForgetMeNeverApp/Resources/AppConfig.json`:
+### Backend configuration
+The macOS client expects the FastAPI service in `backend/` to be running locally (for example via `uvicorn app.main:app --port 8000`). Edit `Sources/ForgetMeNeverApp/Resources/AppConfig.json`:
 ```json
 {
-  "model_url": "https://api.openai.com/v1/audio/transcriptions",
-  "model_voice_name": "Whisper-Large-v3",
+  "backend_url": "http://127.0.0.1:8000",
   "api_key": "",
   "hotkey": {
     "key_code": 17,
@@ -45,13 +42,20 @@ Edit `Sources/ForgetMeNeverApp/Resources/AppConfig.json`:
   }
 }
 ```
-- `model_url`: HTTP endpoint accepting OpenAI Whisper-style `multipart/form-data` requests (`file` + `model`).
-- `model_voice_name`: Passed as the `model` form field (`MODEL_VOICE_NAME`); SambaNova expects exact case (e.g. `Whisper-Large-v3`).
-- Audio uploads use `.m4a` (AAC) with `Content-Type: audio/m4a`.
+- `backend_url`: Base URL for the REST API. If it already ends with `/transcript` the client uses it verbatim; otherwise `/transcript` is appended when calling the service.
+- `api_key`: Optional Bearer token added as the `Authorization` header; leave blank for unsecured local development. You can also set `FMN_API_KEY` to override at runtime.
 - `hotkey.key_code`: macOS virtual key code (17 = `T`).
 - `hotkey.modifier_flags`: Any of `command`, `option`, `control`, `shift`.
 
-Reload the app (quit and re-run) after adjusting configuration.
+Set `FMN_BACKEND_URL` to override the endpoint at runtime (useful when pointing at a remote host). Reload the app (quit and re-run) after adjusting configuration.
+
+The FastAPI app reads its own configuration from environment variables or `.env`. At minimum provide:
+```bash
+export OPENAI_API_KEY=...
+export OPENAI_API_URL=https://api.sambanova.ai/v1
+export OPENAI_TRANSCRIPTION_MODEL=Whisper-Large-v3  # optional; defaults to this value
+```
+(See `backend/app/config.py` for the full list and defaults.)
 
 ### Keeping secrets out of git
 To keep credentials outside the repository, copy the config to your user profile and point the app at it:

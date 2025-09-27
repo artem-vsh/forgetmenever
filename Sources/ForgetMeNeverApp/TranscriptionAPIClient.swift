@@ -10,18 +10,16 @@ final class TranscriptionAPIClient {
     }
 
     func transcribe(audioFileURL: URL) async throws -> String {
-        let apiKey = resolveAPIKey()
-        var request = URLRequest(url: config.modelURL)
+        var request = URLRequest(url: config.transcriptEndpoint)
         request.httpMethod = "POST"
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let apiKey {
+        if let apiKey = resolveAPIKey() {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
-        let bodyData = try makeMultipartBody(boundary: boundary, fileURL: audioFileURL)
-        request.httpBody = bodyData
+        request.httpBody = try makeMultipartBody(boundary: boundary, fileURL: audioFileURL)
 
         let (data, response) = try await urlSession.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -45,9 +43,6 @@ final class TranscriptionAPIClient {
         if let envKey = ProcessInfo.processInfo.environment["FMN_API_KEY"], !envKey.isEmpty {
             return envKey
         }
-        if let envKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !envKey.isEmpty {
-            return envKey
-        }
         return nil
     }
 
@@ -61,14 +56,9 @@ final class TranscriptionAPIClient {
         }
 
         append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-        append("\(config.canonicalModelVoiceName)\r\n")
-
-        append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"file\"; filename=\"recording.m4a\"\r\n")
         append("Content-Type: audio/m4a\r\n\r\n")
-        let fileData = try Data(contentsOf: fileURL)
-        body.append(fileData)
+        body.append(try Data(contentsOf: fileURL))
         append("\r\n")
 
         append("--\(boundary)--\r\n")
@@ -84,6 +74,5 @@ final class TranscriptionAPIClient {
         case server(status: Int, body: String)
     }
 }
-
 
 extension TranscriptionAPIClient: @unchecked Sendable {}

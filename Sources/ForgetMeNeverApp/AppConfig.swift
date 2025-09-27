@@ -34,26 +34,33 @@ struct AppConfig: Decodable {
         }
     }
 
-    let modelURL: URL
-    let modelVoiceName: String
+    private let backendURL: URL
     let apiKey: String?
     let hotkey: HotKeyConfig
 
-    var canonicalModelVoiceName: String {
-        let trimmed = modelVoiceName.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch trimmed.lowercased() {
-        case "whisper-large-v3":
-            return "Whisper-Large-v3"
-        default:
-            return trimmed
-        }
-    }
-
     private enum CodingKeys: String, CodingKey {
-        case modelURL = "model_url"
-        case modelVoiceName = "model_voice_name"
+        case backendURL = "backend_url"
+        case modelURL = "model_url" // legacy name
+        case modelVoiceName = "model_voice_name" // ignored legacy field
         case apiKey = "api_key"
         case hotkey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let backendURL = try? container.decode(URL.self, forKey: .backendURL) {
+            self.backendURL = backendURL
+        } else if let legacyURL = try? container.decode(URL.self, forKey: .modelURL) {
+            self.backendURL = legacyURL
+        } else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.backendURL,
+                .init(codingPath: decoder.codingPath, debugDescription: "backend_url is required")
+            )
+        }
+        _ = try? container.decodeIfPresent(String.self, forKey: .modelVoiceName) // legacy, ignored
+        self.apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey)
+        self.hotkey = try container.decode(HotKeyConfig.self, forKey: .hotkey)
     }
 
     static func load(fileManager: FileManager = .default) throws -> AppConfig {
@@ -113,6 +120,30 @@ struct AppConfig: Decodable {
         } catch {
             throw AppConfigError.decodeFailure(underlying: error)
         }
+    }
+
+    private var environmentBackendURLOverride: URL? {
+        guard let value = ProcessInfo.processInfo.environment["FMN_BACKEND_URL"], !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let expanded = (value as NSString).expandingTildeInPath
+        if let url = URL(string: expanded), url.scheme != nil {
+            return url
+        }
+        return URL(fileURLWithPath: expanded)
+    }
+
+    private var effectiveBackendURL: URL {
+        environmentBackendURLOverride ?? backendURL
+    }
+
+    var transcriptEndpoint: URL {
+        let base = effectiveBackendURL
+        let normalizedPath = base.path.lowercased()
+        if normalizedPath.hasSuffix("/transcript") || normalizedPath.contains("/transcriptions") {
+            return base
+        }
+        return base.appendingPathComponent("transcript")
     }
 }
 

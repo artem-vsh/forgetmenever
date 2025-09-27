@@ -43,6 +43,7 @@ final class ForgetMeNeverApplication: NSObject, NSApplicationDelegate {
 
             try registerHotKey(using: config)
             configureStatusItem(hotKeyDescription: config.hotkey.displayName)
+            print("[ForgetMeNever] Backend endpoint: \(config.transcriptEndpoint.absoluteString)")
             print("[ForgetMeNever] Ready. Menu bar icon added. Shortcut: \(config.hotkey.displayName)")
         } catch {
             print("[ForgetMeNever] Failed to launch: \(error.localizedDescription)")
